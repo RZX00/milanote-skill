@@ -21,9 +21,9 @@ bash ~/.cursor/skills/milanote/scripts/preflight.sh
 opencli milanote whoami -f yaml
 ```
 
-`whoami` 给出 `homeBoardId`。之后的 `--parent` 用画板 id，不要用用户 id。用户 id 是 24 位十六进制；元素 id 大约 14 位字母和数字。
+`whoami` 给出 `homeBoardId`。之后的 `--parent` 用画板 id，不要用用户 id。用户 id 是 24 位十六进制。元素 id 是 16 位字母和数字，并且以 `1` 开头。
 
-输出始终加 `-f yaml`。要交给程序解析时用 `-f json`。写操作退出码为 0 表示已经读回确认，不要再发一次。
+输出始终加 `-f yaml`。要交给程序解析时用 `-f json`。写操作退出码为 0 表示当前打开的编辑器已经把它放进画布，并且没有把它记成已删除。接口里能查到还不够。退出码不是 0 就不要再发一次同样的创建。
 
 ## 命令
 
@@ -62,6 +62,16 @@ opencli milanote whoami -f yaml
 
 位置：画布用 `--x` 和 `--y`（必须同时给），分栏和清单用 `--index`。都不给就自动摆放。清单里只能创建待办。
 
+## 写入怎样才算成功
+
+编辑器只画出自己接受的元素。下面三种写法会被接口保存，但画布上看不见，客户端还会把 id 记成已删除：
+
+- 元素 id 不是 16 位、或不以 `1` 开头。
+- `creationSource` 用了 `opencli` 这种编辑器不认识的值。要用编辑器自己的值，默认是 `DOUBLE_CLICK`。
+- `versionId` 写成 `msid-...`。它必须是元素 id 的前 11 位再加 `-1`。
+
+命令已经按这三条发送，并在发送后检查编辑器状态。不要自己另写一套 `dispatch` 绕过命令。接口返回了元素、但画布上没有，就是这次写入失败。
+
 ## 必须遵守的限制
 
 - 草图的第一笔用 `draw`，或 `create --type sketch --svg '<svg ...>'`。SVG 必须有正的 `width`、`height` 和一个 `<path>`。空草图之后不能补上第一笔。已有笔画的草图用 `update <id> --svg '...'` 整段替换。
@@ -73,7 +83,7 @@ opencli milanote whoami -f yaml
 - 搜索最多展开 500 个元素。超出时缩小 `--depth` 或 `--parent`。
 - 不要删除或复制主画板。自己建的、标题以 `opencli-probe` 开头的画板，结束前删掉。
 
-到期日、反应、指派、分享和回收站恢复没有命令。不要改 `~/.opencli/clis/milanote/`，除非用户明确要求改 CLI。
+到期日、反应、指派、分享和回收站恢复没有命令。写入走 `~/.opencli/clis/milanote/` 里的命令。不要在页面里另写 `dispatch`。
 
 ## 失败时
 

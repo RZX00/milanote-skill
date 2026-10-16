@@ -175,8 +175,8 @@ export function checklistItems(value) {
 }
 
 export function generateElementId() {
-  const bytes = randomBytes(14);
-  let id = '';
+  const bytes = randomBytes(15);
+  let id = '1';
   for (const byte of bytes) id += ALPHABET[byte % ALPHABET.length];
   return id;
 }
@@ -635,7 +635,7 @@ export function nextPosition(siblings, section, coords = {}) {
   if (!Number.isInteger(x) || !Number.isInteger(y)) throw new ArgumentError('x and y must be integers');
   if ((x >= 0) !== (y >= 0)) throw new ArgumentError('pass both --x and --y, or omit both to auto-place');
   if (x > 100000 || y > 100000) throw new ArgumentError('x and y must be <= 100000');
-  if (x >= 0) return { x, y, score: 65536 };
+  if (x >= 0) return { x, y, score: (siblings.length + 8) * 65536 };
   const count = siblings.length;
   return { x: (count % 4) * 42, y: 8 + Math.floor(count / 4) * 28, score: (count + 1) * 65536 };
 }
@@ -675,7 +675,8 @@ export function channelsPayload(userId, boardId) {
   };
 }
 
-function elementMeta(meta) {
+function elementMeta(meta, elementId) {
+  const seed = String(elementId || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 11);
   return {
     creator: meta.userId,
     modifiedBy: meta.userId,
@@ -683,7 +684,7 @@ function elementMeta(meta) {
     modifiedTime: meta.now,
     platform: 'Desktop web',
     locationSectionModifiedTime: meta.now,
-    versionId: `${meta.sessionId}-1`,
+    versionId: `${seed}-1`,
   };
 }
 
@@ -694,7 +695,7 @@ function createAction(meta, { id, elementType, parentId, section, position, cont
     elementType,
     location: { parentId, section, position },
     content,
-    meta: elementMeta(meta),
+    meta: elementMeta(meta, id),
   };
 }
 

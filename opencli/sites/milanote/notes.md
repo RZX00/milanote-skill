@@ -10,7 +10,9 @@ Reads:
 - Note text is a TipTap document: `{ type: "doc", content: [{ type: "paragraph", attrs: { key, textAlign }, content: [{ type: "text", text }] }] }`.
 - Image URLs are `content.image.original`.
 
-Writes are dispatched through the open editor store. The live middleware emits them on the existing collab socket with the in-memory permission token. A separate Socket.IO client is ignored. `ELEMENT_UPDATE` patches are `updates: [{ id, changes }]`. Moves use `ELEMENT_MOVE` with a top-level `location`. Success is reported only after a follow-up read.
+Writes are dispatched through the open editor store. The live middleware emits them on the existing collab socket with the in-memory permission token. A separate Socket.IO client is ignored. `ELEMENT_UPDATE` patches are `updates: [{ id, changes }]`. Moves use `ELEMENT_MOVE` with a top-level `location`.
+
+A REST readback is not success. The open editor must have the element in `state.elements` and must not list its id in `deletedElements`. Ids are 16 characters and start with `1`. `creationSource` is `DOUBLE_CLICK`. `meta.versionId` is the first 11 characters of the element id plus `-1`. Other shapes are stored by the API and then hidden by the editor.
 
 Verified live on 2026-10-16, then probe boards were deleted:
 - Create: board, column, note, link, task, checklist, swatch, image URL, line, sketch, annotation, document, table, alias, comment thread.

@@ -316,6 +316,16 @@ export async function runCollab(page, userId, events) {
   }
   const result = await page.evaluate(async ({ userId: signedInUser, events: steps }) => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const editorShows = (state, id) => {
+      const elements = state?.get?.('elements');
+      const live = Boolean(elements && typeof elements.get === 'function' && elements.get(id));
+      const deleted = state?.get?.('deletedElements');
+      const tombstoned = Boolean(
+        (deleted && typeof deleted.get === 'function' && deleted.get(id))
+        || (deleted && deleted[id]),
+      );
+      return live && !tombstoned;
+    };
     const appNode = document.getElementById('app');
     const containerKey = appNode && Object.keys(appNode).find((name) => name.startsWith('__reactContainer'));
     let store = null;
@@ -349,6 +359,7 @@ export async function runCollab(page, userId, events) {
       tokens: [token],
     };
     let sent = 0;
+    const createdIds = [];
     try {
       for (const step of steps) {
         if (step.event === 'sleep') {
@@ -358,7 +369,8 @@ export async function runCollab(page, userId, events) {
         if (step.event !== 'action') continue;
         if (step.payload?.type === 'USER_NAVIGATE') continue;
         identity.user = { ...identity.user, clientTick: Number(identity.user.clientTick || 0) + 1 };
-        if (String(step.payload?.type || '').startsWith('COMMENTS_')) {
+        const actionType = String(step.payload?.type || '');
+        if (actionType.startsWith('COMMENTS_')) {
           store.dispatch({
             ...step.payload,
             userId: identity.user._id,
@@ -369,10 +381,11 @@ export async function runCollab(page, userId, events) {
           store.dispatch({
             ...step.payload,
             ...identity,
-            creationSource: step.payload.creationSource || 'opencli',
+            creationSource: step.payload.creationSource || 'DOUBLE_CLICK',
             markAsFetched: true,
           });
         }
+        if (actionType === 'ELEMENT_CREATE' && step.payload.id) createdIds.push(step.payload.id);
         sent += 1;
         await sleep(80);
       }
@@ -380,13 +393,17 @@ export async function runCollab(page, userId, events) {
       return { error: String(error?.message || error).slice(0, 240), sent };
     }
     await sleep(400);
-    return { ok: true, sent };
+    const hidden = createdIds.filter((id) => !editorShows(store.getState(), id));
+    return { ok: hidden.length === 0, sent, hidden };
   }, { userId, events });
 
   if (!result?.ok) {
+    const hidden = Array.isArray(result?.hidden) && result.hidden.length
+      ? ` The editor hid ${result.hidden.join(', ')}.`
+      : '';
     throw new CommandExecutionError(
-      `Milanote collab write failed: ${redact(result?.error)}`,
-      'Keep Chrome signed in to app.milanote.com and retry. The element was not confirmed.',
+      `Milanote collab write failed: ${redact(result?.error || 'the open editor did not show the element')}.${hidden}`,
+      'A REST readback is not enough. The open board must list the element and must not mark it deleted.',
     );
   }
   return result;

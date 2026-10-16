@@ -179,7 +179,7 @@ test('argument guards reject silent clamps and bad colors', () => {
   assert.equal(requireColor('336699'), '#336699');
   assert.equal(parseKind('card'), 'note');
   assert.deepEqual(nextPosition([{ index: 2 }], 'INBOX', { index: -1 }), { index: 3, score: 3 });
-  assert.match(generateElementId(), /^[0-9A-Za-z]{14}$/);
+  assert.match(generateElementId(), /^1[0-9A-Za-z]{15}$/);
 });
 
 function CommandExecutionMismatch(error) {
