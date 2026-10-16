@@ -1,0 +1,19 @@
+{
+  "name": "milanote",
+  "description": "Read and write a signed-in Milanote board from an agent, through OpenCLI.",
+  "version": "1.0.0",
+  "author": {
+    "name": "rzx00",
+    "email": "2943894881@qq.com"
+  },
+  "homepage": "https://github.com/RZX00/milanote-skill",
+  "repository": "https://github.com/RZX00/milanote-skill",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "milanote",
+    "opencli",
+    "boards"
+  ],
+  "skills": "./skills"
+}

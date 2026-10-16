@@ -1,0 +1,19 @@
+{
+  "name": "milanote-skill",
+  "owner": {
+    "name": "rzx00",
+    "url": "https://github.com/RZX00"
+  },
+  "metadata": {
+    "description": "Read and write a signed-in Milanote board from an agent, through OpenCLI.",
+    "version": "1.0.0",
+    "repository": "https://github.com/RZX00/milanote-skill"
+  },
+  "plugins": [
+    {
+      "name": "milanote",
+      "description": "Read and write a signed-in Milanote board from an agent, through OpenCLI.",
+      "source": "./"
+    }
+  ]
+}
