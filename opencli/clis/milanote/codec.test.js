@@ -180,6 +180,13 @@ test('argument guards reject silent clamps and bad colors', () => {
   assert.equal(parseKind('card'), 'note');
   assert.deepEqual(nextPosition([{ index: 2 }], 'INBOX', { index: -1 }), { index: 3, score: 3 });
   assert.match(generateElementId(), /^1[0-9A-Za-z]{15}$/);
+  const occupied = [{ x: 0, y: 4, elementType: 'CARD', section: 'CANVAS' }];
+  const placed = nextPosition(occupied, 'CANVAS', { x: -1, y: -1, index: -1 }, 'note');
+  assert.notDeepEqual([placed.x, placed.y], [0, 4]);
+  assert.throws(
+    () => nextPosition(occupied, 'CANVAS', { x: 0, y: 4, index: -1 }, 'note'),
+    ArgumentError,
+  );
 });
 
 function CommandExecutionMismatch(error) {

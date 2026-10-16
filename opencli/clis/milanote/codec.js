@@ -620,7 +620,40 @@ export function sectionFor(containerType, kind) {
   return 'CANVAS';
 }
 
-export function nextPosition(siblings, section, coords = {}) {
+const FOOTPRINT = {
+  COLUMN: [22, 40],
+  BOARD: [18, 20],
+  DOCUMENT: [18, 20],
+  TABLE: [36, 32],
+  SKETCH: [36, 24],
+  LINE: [20, 20],
+  TASK_LIST: [22, 30],
+  IMAGE: [18, 16],
+  FILE: [18, 16],
+};
+
+function sizeFor(kindOrType) {
+  const type = kindOrType === 'file' ? 'FILE' : (ELEMENT_TYPE[kindOrType] || kindOrType || 'CARD');
+  const pair = FOOTPRINT[type] || [18, 12];
+  return { w: pair[0], h: pair[1] };
+}
+
+function canvasBoxes(siblings) {
+  return siblings.filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y)).map((row) => {
+    const size = sizeFor(row.elementType);
+    return { x: row.x, y: row.y, ...size };
+  });
+}
+
+function boxesHit(left, right) {
+  const gap = 2;
+  return left.x < right.x + right.w + gap
+    && left.x + left.w + gap > right.x
+    && left.y < right.y + right.h + gap
+    && left.y + left.h + gap > right.y;
+}
+
+export function nextPosition(siblings, section, coords = {}, kind = '') {
   const x = coords.x ?? -1;
   const y = coords.y ?? -1;
   const index = coords.index ?? -1;
@@ -635,9 +668,22 @@ export function nextPosition(siblings, section, coords = {}) {
   if (!Number.isInteger(x) || !Number.isInteger(y)) throw new ArgumentError('x and y must be integers');
   if ((x >= 0) !== (y >= 0)) throw new ArgumentError('pass both --x and --y, or omit both to auto-place');
   if (x > 100000 || y > 100000) throw new ArgumentError('x and y must be <= 100000');
-  if (x >= 0) return { x, y, score: (siblings.length + 8) * 65536 };
-  const count = siblings.length;
-  return { x: (count % 4) * 42, y: 8 + Math.floor(count / 4) * 28, score: (count + 1) * 65536 };
+  const size = sizeFor(kind);
+  const taken = canvasBoxes(siblings);
+  const score = (siblings.length + 8) * 65536;
+  if (x >= 0) {
+    if (taken.some((box) => boxesHit({ x, y, ...size }, box))) {
+      throw new ArgumentError(`position ${x},${y} overlaps an existing element`);
+    }
+    return { x, y, score };
+  }
+  for (let row = 0; row < 30; row += 1) {
+    for (let col = 0; col < 6; col += 1) {
+      const spot = { x: col * (size.w + 4), y: 4 + row * (size.h + 4), ...size };
+      if (!taken.some((box) => boxesHit(spot, box))) return { x: spot.x, y: spot.y, score };
+    }
+  }
+  throw new ArgumentError('no free canvas position; pass --x and --y');
 }
 
 function baseAction(meta, type, boardId, tick) {

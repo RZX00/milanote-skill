@@ -142,7 +142,7 @@ defineMilanoteCommand({
     }
     const section = sectionFor(container.elementType, kind);
     const loaded = await fetchElementPayload(page, container.id);
-    const position = nextPosition(childrenOf(loaded.elements, container.id), section, placement(args));
+    const position = nextPosition(childrenOf(loaded.elements, container.id), section, placement(args), kind);
     const plan = planCreate(newMeta(session.userId), {
       kind,
       boardId: board.id,
@@ -235,7 +235,7 @@ defineMilanoteCommand({
     if (container.elementType === 'TASK_LIST') throw new ArgumentError('a sketch cannot be created inside a checklist');
     const section = sectionFor(container.elementType, 'sketch');
     const loaded = await fetchElementPayload(page, container.id);
-    const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 });
+    const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 }, 'sketch');
     const plan = planCreate(newMeta(session.userId), {
       kind: 'sketch',
       boardId: board.id,
@@ -291,6 +291,7 @@ defineMilanoteCommand({
       childrenOf(loaded.elements, destination.container.id).filter((item) => item.id !== id),
       section,
       placement(args),
+      element.elementType,
     );
     await runCollab(page, session.userId, planMove(newMeta(session.userId), {
       boardId: destination.board.id,
@@ -358,7 +359,7 @@ defineMilanoteCommand({
       const { container, board } = await resolveContainer(page, parent.id);
       const section = sectionFor(container.elementType, 'note');
       const loaded = await fetchElementPayload(page, container.id);
-      const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 });
+      const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 }, 'note');
       plan = planComment(meta, {
         boardId: board.id,
         parentId: container.id,
@@ -422,7 +423,7 @@ defineMilanoteCommand({
     const { container, board } = await resolveContainer(page, parentId);
     const section = sectionFor(container.elementType, 'note');
     const loaded = await fetchElementPayload(page, container.id);
-    const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 });
+    const position = nextPosition(childrenOf(loaded.elements, container.id), section, { x: -1, y: -1, index: -1 }, upload.fileType);
     const plan = planAttachment(newMeta(session.userId), {
       boardId: board.id,
       parentId: container.id,
@@ -500,11 +501,7 @@ defineMilanoteCommand({
     const section = element.section || 'CANVAS';
     const position = section === 'INBOX'
       ? nextPosition(siblings, section, { x: -1, y: -1, index: Number.isInteger(element.index) ? element.index + 1 : -1 })
-      : nextPosition(siblings, section, {
-        x: Number.isFinite(element.x) ? element.x + 8 : -1,
-        y: Number.isFinite(element.y) ? element.y + 8 : -1,
-        index: -1,
-      });
+      : nextPosition(siblings, section, { x: -1, y: -1, index: -1 }, element.elementType);
     const content = source.content && typeof source.content === 'object' ? source.content : {};
     const plan = planDuplicate(newMeta(session.userId), {
       boardId: board.id,
