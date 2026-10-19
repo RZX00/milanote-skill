@@ -40,6 +40,7 @@ import {
   runCollab,
   uploadAttachment,
 } from './session.js';
+import { createNoteViaUi, deleteViaUi, moveViaUi, updateTextViaUi } from './ui.js';
 
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
@@ -78,6 +79,29 @@ function placement(args) {
   };
 }
 
+const VIA_ARG = {
+  name: 'via',
+  default: 'auto',
+  choices: ['auto', 'api', 'ui'],
+  help: 'auto: send the change to Milanote, and redo it in the editor if Milanote drops it; api: send only; ui: editor only',
+};
+
+// Some boards drop the actions this adapter builds while accepting the same change
+// made in the editor (2026-10-19). Only a read-back that shows the change missing
+// counts as dropped. Refusals before sending (a different signed-in user, an
+// editor that is not ready) are rethrown: redoing them in the editor would bypass
+// that guard.
+function droppedWrite(error) {
+  return error instanceof CommandExecutionError
+    && /did not (persist|delete|stick)|but Milanote stored/i.test(String(error.message));
+}
+
+function noFallback(error, what) {
+  return new CommandExecutionError(
+    `${error.message}. The editor fallback covers ${what}; make this change in the editor (see the milanote skill).`,
+  );
+}
+
 async function owned(page, elementId) {
   const loaded = await fetchElementPayload(page, elementId);
   const element = loaded.elements.find((item) => item.id === elementId);
@@ -107,10 +131,12 @@ defineMilanoteCommand({
     { name: 'y', type: 'int', default: -1, help: 'Canvas y. Omit both x and y to auto-place' },
     { name: 'target', default: '', help: 'Element id to alias when --type alias' },
     { name: 'svg', default: '', help: 'SVG markup stored inside a sketch. The element must include width, height, and a path' },
+    VIA_ARG,
   ],
   columns: LIST_COLUMNS,
   func: async (page, args) => {
     const kind = parseKind(args.type);
+    const via = args.via || 'auto';
     const title = optionalText(args.title, 'title', 500);
     const text = optionalText(args.text, 'text');
     const caption = optionalText(args.caption, 'caption', 2000);
@@ -143,6 +169,16 @@ defineMilanoteCommand({
     const section = sectionFor(container.elementType, kind);
     const loaded = await fetchElementPayload(page, container.id);
     const position = nextPosition(childrenOf(loaded.elements, container.id), section, placement(args), kind);
+    const uiNote = (kind === 'note' || kind === 'card') && container.elementType === 'BOARD' && section === 'CANVAS';
+    const viaEditor = async () => {
+      const explicit = Number.isInteger(args.x) && args.x >= 0;
+      const stored = await createNoteViaUi(page, { boardId: board.id, x: position.x, y: position.y, text, explicit });
+      return [toListRow(stored, 0)];
+    };
+    if (via === 'ui') {
+      if (!uiNote) throw new ArgumentError('--via ui creates notes on a board canvas only');
+      return viaEditor();
+    }
     const plan = planCreate(newMeta(session.userId), {
       kind,
       boardId: board.id,
@@ -159,13 +195,26 @@ defineMilanoteCommand({
       target,
       svg,
     });
-    await runCollab(page, session.userId, plan.events);
-    const rows = [];
-    for (const record of plan.records) {
-      const found = await confirmedElement(page, record.id);
-      rows.push(toListRow(assertPersisted(found, record), 0));
+    try {
+      await runCollab(page, session.userId, plan.events);
+      const rows = [];
+      for (const record of plan.records) {
+        const found = await confirmedElement(page, record.id);
+        rows.push(toListRow(assertPersisted(found, record), 0));
+      }
+      return rows;
+    } catch (error) {
+      if (via !== 'auto' || !droppedWrite(error)) throw error;
+      if (!uiNote) throw noFallback(error, 'notes on a board canvas');
+      // Only a missing element is redone; one that exists with the wrong content
+      // would become a duplicate. A late arrival is checked like the first read.
+      if (!/did not persist/i.test(String(error.message))) throw error;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const late = await confirmedElement(page, plan.records[0].id);
+        if (late && late.elementType !== 'SKELETON') return [toListRow(assertPersisted(late, plan.records[0]), 0)];
+      }
+      return viaEditor();
     }
-    return rows;
   },
 });
 
@@ -183,10 +232,12 @@ defineMilanoteCommand({
     { name: 'caption', default: '', help: 'New image caption' },
     { name: 'checked', default: '', help: 'true or false for a task' },
     { name: 'svg', default: '', help: 'Replacement <svg> for a sketch. Include width, height, and a path' },
+    VIA_ARG,
   ],
   columns: LIST_COLUMNS,
   func: async (page, args) => {
     const id = requireElementId(args.id, 'id');
+    const via = args.via || 'auto';
     const fields = {
       title: optionalText(args.title, 'title', 500),
       text: optionalText(args.text, 'text'),
@@ -199,21 +250,35 @@ defineMilanoteCommand({
     const session = await ensureSession(page);
     const { element, board } = await owned(page, id);
     const data = buildUpdateData(element.elementType, fields);
-    await runCollab(page, session.userId, planUpdate(newMeta(session.userId), {
-      boardId: board.id,
-      elementId: element.id,
-      data,
-    }));
-    const found = await confirmedElement(page, element.id);
-    const expect = { id: element.id, elementType: element.elementType };
-    if (data.title != null || data.label != null) expect.title = data.title ?? data.label;
-    if (data.description != null || data.caption != null) expect.text = data.description ?? data.caption;
-    if (data.textContent != null) expect.text = fields.text;
-    if (data.url != null) expect.url = data.url;
-    if (data.color != null) expect.color = data.color;
-    if (data.checked != null) expect.checked = data.checked;
-    if (data.drawing?.svg) expect.text = data.drawing.svg;
-    return [toListRow(assertPersisted(found, expect), 0)];
+    const onlyText = fields.text != null
+      && [fields.title, fields.url, fields.color, fields.caption, fields.checked, fields.svg].every((value) => value == null);
+    const uiText = element.elementType === 'CARD' && onlyText;
+    const viaEditor = async () => [toListRow(await updateTextViaUi(page, { boardId: board.id, element, text: fields.text }), 0)];
+    if (via === 'ui') {
+      if (!uiText) throw new ArgumentError('--via ui changes the text of a note only');
+      return viaEditor();
+    }
+    try {
+      await runCollab(page, session.userId, planUpdate(newMeta(session.userId), {
+        boardId: board.id,
+        elementId: element.id,
+        data,
+      }));
+      const found = await confirmedElement(page, element.id);
+      const expect = { id: element.id, elementType: element.elementType };
+      if (data.title != null || data.label != null) expect.title = data.title ?? data.label;
+      if (data.description != null || data.caption != null) expect.text = data.description ?? data.caption;
+      if (data.textContent != null) expect.text = fields.text;
+      if (data.url != null) expect.url = data.url;
+      if (data.color != null) expect.color = data.color;
+      if (data.checked != null) expect.checked = data.checked;
+      if (data.drawing?.svg) expect.text = data.drawing.svg;
+      return [toListRow(assertPersisted(found, expect), 0)];
+    } catch (error) {
+      if (via !== 'auto' || !droppedWrite(error)) throw error;
+      if (!uiText) throw noFallback(error, 'note text');
+      return viaEditor();
+    }
   },
 });
 
@@ -273,10 +338,12 @@ defineMilanoteCommand({
     { name: 'x', type: 'int', default: -1, help: 'Canvas x. Omit both x and y to auto-place' },
     { name: 'y', type: 'int', default: -1, help: 'Canvas y. Omit both x and y to auto-place' },
     { name: 'index', type: 'int', default: -1, help: 'Index inside a column or checklist' },
+    VIA_ARG,
   ],
   columns: LIST_COLUMNS,
   func: async (page, args) => {
     const id = requireElementId(args.id, 'id');
+    const via = args.via || 'auto';
     const parentId = requireElementId(args.parent, 'parent');
     if (id === parentId) throw new ArgumentError('an element cannot be moved into itself');
     const session = await ensureSession(page);
@@ -293,15 +360,41 @@ defineMilanoteCommand({
       placement(args),
       element.elementType,
     );
-    await runCollab(page, session.userId, planMove(newMeta(session.userId), {
+    // The editor fallback drags on one canvas: same board, canvas to canvas, not lines.
+    const uiMove = section === 'CANVAS' && element.section === 'CANVAS' && element.parentId === destination.container.id
+      && element.elementType !== 'LINE';
+    const viaEditor = async () => [toListRow(await moveViaUi(page, {
       boardId: destination.board.id,
-      elementId: element.id,
-      parentId: destination.container.id,
-      section,
-      position,
-    }));
-    const found = await confirmedElement(page, element.id);
-    return [toListRow(assertPersisted(found, { id: element.id, parentId: destination.container.id }), 0)];
+      element,
+      x: position.x,
+      y: position.y,
+    }), 0)];
+    if (via === 'ui') {
+      if (!uiMove) throw new ArgumentError('--via ui moves an element within the canvas of its own board only');
+      return viaEditor();
+    }
+    try {
+      await runCollab(page, session.userId, planMove(newMeta(session.userId), {
+        boardId: destination.board.id,
+        elementId: element.id,
+        parentId: destination.container.id,
+        section,
+        position,
+      }));
+      const found = assertPersisted(await confirmedElement(page, element.id), {
+        id: element.id,
+        parentId: destination.container.id,
+      });
+      // With an unchanged parent, only the coordinates show whether the move landed.
+      if (section === 'CANVAS' && (found.x !== position.x || found.y !== position.y)) {
+        throw new CommandExecutionError(`Move did not stick for ${element.id}`);
+      }
+      return [toListRow(found, 0)];
+    } catch (error) {
+      if (via !== 'auto' || !droppedWrite(error)) throw error;
+      if (!uiMove) throw noFallback(error, 'moves within the canvas of one board');
+      return viaEditor();
+    }
   },
 });
 
@@ -313,6 +406,7 @@ defineMilanoteCommand({
   args: [
     { name: 'id', positional: true, required: true, help: 'Element id' },
     { name: 'yes', type: 'boolean', default: false, help: 'Confirm permanent deletion of this element' },
+    VIA_ARG,
   ],
   columns: ['id', 'elementType', 'deleted', 'childCount'],
   func: async (page, args) => {
@@ -320,17 +414,40 @@ defineMilanoteCommand({
       throw new ArgumentError('delete requires --yes true', 'This permanently removes the element and anything inside it.');
     }
     const id = requireElementId(args.id, 'id');
+    const via = args.via || 'auto';
     const session = await ensureSession(page);
     if (id === session.homeBoardId) throw new ArgumentError('the home board cannot be deleted');
     const { element, board } = await owned(page, id);
     const loaded = await fetchElementPayload(page, element.id);
     const childCount = childrenOf(loaded.elements, element.id).length;
-    await runCollab(page, session.userId, planDelete(newMeta(session.userId), { boardId: board.id, element }));
-    const still = await confirmedElement(page, element.id);
-    if (still && still.elementType !== 'SKELETON') {
-      throw new CommandExecutionError(`Milanote did not delete ${element.id}`);
+    // A line has no body to grab, and a board without a parent is not drawn on any
+    // canvas, so the editor fallback cannot drag either to Trash.
+    const uiDelete = element.elementType !== 'LINE' && Boolean(element.parentId);
+    const done = [{ id: element.id, elementType: element.elementType, deleted: true, childCount }];
+    if (via === 'ui') {
+      if (!uiDelete) throw new ArgumentError('--via ui cannot delete a line or a board that has no parent');
+      await deleteViaUi(page, { boardId: board.id, element });
+      return done;
     }
-    return [{ id: element.id, elementType: element.elementType, deleted: true, childCount }];
+    try {
+      await runCollab(page, session.userId, planDelete(newMeta(session.userId), { boardId: board.id, element }));
+      let still = null;
+      try {
+        still = await confirmedElement(page, element.id);
+      } catch (readError) {
+        // A read of a deleted element can answer "<id> was deleted"; that is success.
+        if (!/DELETED|not found/i.test(String(readError?.message || ''))) throw readError;
+      }
+      if (still && still.elementType !== 'SKELETON') {
+        throw new CommandExecutionError(`Milanote did not delete ${element.id}`);
+      }
+      return done;
+    } catch (error) {
+      if (via !== 'auto' || !droppedWrite(error)) throw error;
+      if (!uiDelete) throw noFallback(error, 'deletes of anything but lines and boards without a parent');
+      await deleteViaUi(page, { boardId: board.id, element });
+      return done;
+    }
   },
 });
 
