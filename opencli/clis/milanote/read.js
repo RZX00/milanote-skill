@@ -112,7 +112,7 @@ defineMilanoteCommand({
   name: 'tree',
   access: 'read',
   description: 'Read a board and the boards, columns, and checklists nested inside it',
-  example: 'opencli milanote tree <id> --depth 2 -f yaml',
+  example: 'opencli milanote tree --id <id> --depth 2 -f yaml',
   args: [
     { name: 'id', default: '', help: 'Root board id. Defaults to the home board' },
     { name: 'depth', type: 'int', default: 2, help: 'How many levels below the root to open (0-6)' },

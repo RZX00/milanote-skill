@@ -23,3 +23,11 @@ Verified live on 2026-10-16, then probe boards were deleted:
 `duplicate <id>` copies an element with `ELEMENT_CREATE` and the original content. `cell --id --row --col --text` writes a table cell by replacing `content.tableContent` and setting that cell's `value` to a string. Both were verified on 2026-10-16 and the probe board was deleted.
 
 Sketch ink is `content.drawing = { paths: [], svg, width, height }`. Put it on `ELEMENT_CREATE` (`draw` or `create --type sketch --svg`). Replacing `drawing` on a sketch that already has an svg also sticks; writing `drawing` onto a sketch whose `drawing` is still null does not. Document titles and document `textContent` still cannot be changed after creation; document body updates go through `content.description`.
+
+## 2026-10-19 by claude
+
+Some boards reject adapter writes. On shared boards, and on at least one board under the home board, `create` fails with `did not persist` and `delete` fails with `did not delete`. Reads still work. Root cause not identified.
+
+The editor UI still saves on those boards when driven with real input: double-click a blank canvas spot to create a note, then type; drag the toolbar Line onto the canvas, then drag each end onto a card to attach it. Injected `paste` or `dblclick` events are not a fallback: they break the skill's no-page-script rule and an auto-mode permission check blocks them.
+
+`tree` takes the root as `--id <id>`. A positional id fails with `too many arguments`.
