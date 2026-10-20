@@ -8,12 +8,29 @@
 
 ## 实际效果
 
-〔待补：证据物，建议内容为：在一块专门新建的测试画板上，对 Agent 说「用 milanote 技能，在这块画板里创建四张便签……」，附运行前（空画板）和运行后（出现四张便签）的两张截图，再附命令返回的 `id`、`x`、`y`。需要仓库作者本人提供截图，或授权 Agent 建一块测试画板后补拍。〕
+![两张截图上下对比：上图是新建的空画板「测试」，下图是同一块画板上，Agent 建好的四张便签：买颜料、约摄影师、选配色、交稿](./docs/assets/demo-before-after.png)
+
+在一块新建的空画板「测试」上，对 Claude Code 说：
+
+```text
+用 milanote 技能，在「测试」画板里创建四张便签，正文分别是：买颜料、约摄影师、选配色、交稿。
+```
+
+它加载技能，先用 `whoami` 和 `boards` 找到这块画板的 id，再运行四次 `create --type note`。四条命令退出码都是 0，没有触发编辑器重做。用 `opencli milanote board <画板id>` 读回，四张便签都在画布上：
+
+| 正文 | 类型 | x | y |
+|---|---|---|---|
+| 买颜料 | CARD | 0 | 4 |
+| 约摄影师 | CARD | 22 | 4 |
+| 选配色 | CARD | 44 | 4 |
+| 交稿 | CARD | 66 | 4 |
+
+2026-10-20 在 Windows 11、OpenCLI 2.0.1 上运行；元素 id 已从表中省略。
 
 ## 状态与限制
 
 - **状态**：非官方项目，与 Milanote 公司无关。它靠 Milanote 网页自己用的、未公开的内部接口，接口变动时命令可能失效。2026-10-16 起开发，尚无 release。使用前请自己看一眼 Milanote 的服务条款。
-- **适用**：已实测 Claude Code（Windows 11，OpenCLI 1.8.8）。其他 Agent、macOS、Linux、OpenCLI 2.x 未测试。需要桌面版 Chrome，装好 OpenCLI 扩展，并在里面登录了 Milanote。
+- **适用**：已实测 Claude Code（Windows 11）：OpenCLI 1.8.8 上逐类验证过全部元素，2.0.1 上验证过读画板和建便签。其他 Agent、macOS、Linux 未测试。需要桌面版 Chrome，装好 OpenCLI 扩展，并在里面登录了 Milanote。
 - **写入可能失败**：部分画板会拒收命令写入，报 `did not persist` 或 `did not delete`；共享画板和主画板下的个别画板都出现过，原因未查明，见 [`notes.md`](./opencli/sites/milanote/notes.md)。默认会自动改用编辑器里的真实鼠标键盘输入重做，但只覆盖便签的新建、改字、同画板内移动和删除；分栏、画板、链接、连线要手工做。重做时 Chrome 窗口不能最小化，一张便签约 20 到 40 秒。
 - **数据和权限**：不读取 cookie 和密码，用的是 Chrome 里已登录的会话；权限令牌只放在内存里，分享链接不写进文件。命令只访问 `app.milanote.com`、`upload.milanote.com` 和上传用的预签名存储地址；本地只读你用 `upload --file` 指定的文件。Agent 读到的画板内容会进入你所用模型的上下文。仓库里没有账号，每个人用自己已登录的 Milanote。
 - **不适合**：没有桌面版 Chrome 的环境；不能容忍接口变动的生产流程。
@@ -24,7 +41,7 @@
 
 **前置条件**（本仓库不包含它们）：
 
-- [OpenCLI](https://github.com/jackwener/opencli)，需要 Node.js 20.18.1 或更高：`npm install -g @jackwener/opencli@1.8.8`。本仓库用 1.8.8 验证，npm 上最新的 2.0.1 未测试。
+- [OpenCLI](https://github.com/jackwener/opencli)，需要 Node.js 20.18.1 或更高：`npm install -g @jackwener/opencli@1.8.8`。1.8.8 上验证过全部命令；npm 上最新的 2.0.1 验证过读画板和建便签，其余命令未测。
 - Chrome 里的 [OpenCLI 扩展](https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk)；运行 `opencli doctor` 确认已连接。
 - 在装了扩展的同一个 Chrome 里登录 [Milanote](https://app.milanote.com/)。
 
@@ -82,7 +99,7 @@ opencli milanote types -f yaml
 用 milanote 技能，在「测试」画板里创建四张便签，正文分别是：买颜料、约摄影师、选配色、交稿。
 ```
 
-你会得到：画板上多出四张便签；命令为每张返回 `id`、坐标 `x`、`y` 和 `openUrl`。退出码为 0，才表示画布上真有了它；报 `did not persist` 时见上面的「状态与限制」。
+你会得到：画板上多出四张便签；命令为每张返回 `id` 和坐标 `x`、`y`（便签的 `openUrl` 为空）。退出码为 0，才表示画布上真有了它；报 `did not persist` 时见上面的「状态与限制」。
 
 <details>
 <summary>不经过 Agent，直接用命令</summary>

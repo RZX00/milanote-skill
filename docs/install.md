@@ -12,11 +12,11 @@
 
 2.3 安装脚本：`install.sh`（macOS、Linux、Windows 的 Git Bash）和 `install.ps1`（Windows PowerShell）。
 
-2.4 已测试宿主：技能装好后被加载，并完成过一次读写的 Agent 环境。本仓库只在 Claude Code（Windows 11，OpenCLI 1.8.8）上测试过。
+2.4 已测试宿主：技能装好后被加载，并完成过一次读写的 Agent 环境。本仓库只在 Claude Code（Windows 11，OpenCLI 1.8.8 和 2.0.1）上测试过。
 
 ## 3 前置条件
 
-3.1 应先运行 `opencli --version`。命令不存在时，应告知用户先安装 OpenCLI（`npm install -g @jackwener/opencli@1.8.8`，需要 Node.js 20.18.1 或更高），并停止；不应自行安装 OpenCLI 或 Node.js。注：本仓库用 1.8.8 验证过，2.x 未测试；版本不同时应告知用户。
+3.1 应先运行 `opencli --version`。命令不存在时，应告知用户先安装 OpenCLI（`npm install -g @jackwener/opencli@1.8.8`，需要 Node.js 20.18.1 或更高），并停止；不应自行安装 OpenCLI 或 Node.js。注：本仓库用 1.8.8 验证过全部命令，用 2.0.1 验证过读画板和建便签；版本不是这两个时应告知用户。
 
 3.2 OpenCLI 的 Chrome 扩展不能由 Agent 安装。应请用户自己安装，并运行 `opencli doctor` 确认扩展已连接。
 
@@ -72,6 +72,6 @@ irm https://raw.githubusercontent.com/RZX00/milanote-skill/main/install.ps1 | ie
 <examples>
 <example>
 用户：帮我安装 milanote-skill。
-Agent：先运行 `opencli --version`，确认 OpenCLI 已装且为 1.8.8；请用户确认 Chrome 扩展已连接（`opencli doctor`）、Milanote 已登录。再列出 4.1 的写入位置，用户同意后运行 4.2 的命令，随后运行 `opencli milanote types -f yaml` 验证。最后说：「请新开一个会话，然后对我说：用 milanote 技能，列出我主画板下的画板。」
+Agent：先运行 `opencli --version`，确认 OpenCLI 已装且为 1.8.8 或 2.0.1；请用户确认 Chrome 扩展已连接（`opencli doctor`）、Milanote 已登录。再列出 4.1 的写入位置，用户同意后运行 4.2 的命令，随后运行 `opencli milanote types -f yaml` 验证。最后说：「请新开一个会话，然后对我说：用 milanote 技能，列出我主画板下的画板。」
 </example>
 </examples>
