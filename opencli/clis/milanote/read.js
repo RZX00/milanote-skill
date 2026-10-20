@@ -14,7 +14,15 @@ import {
   toDetailRow,
   toListRow,
 } from './codec.js';
-import { browserJson, ensureSession, fetchElementPayload, walkElements } from './session.js';
+import {
+  LINK_ARG,
+  accessUrl,
+  applyShareLink,
+  browserJson,
+  ensureSession,
+  fetchElementPayload,
+  walkElements,
+} from './session.js';
 
 function defineMilanoteCommand(options) {
   cli({
@@ -24,6 +32,8 @@ function defineMilanoteCommand(options) {
     browser: true,
     siteSession: 'persistent',
     ...options,
+    args: [...(options.args || []), LINK_ARG],
+    func: async (page, args) => options.func(page, await applyShareLink(page, args)),
   });
 }
 
@@ -184,7 +194,7 @@ defineMilanoteCommand({
     if (rows.length === 0) {
       const alt = await browserJson(page, {
         method: 'GET',
-        url: `/api/boards/${encodeURIComponent(id)}?loadAncestors=false`,
+        url: accessUrl(page, `/api/boards/${encodeURIComponent(id)}?loadAncestors=false`),
       });
       if (alt.status === 200 && alt.json) {
         rows = collectComments(alt.json, [...loaded.elements, ...collectElements(alt.json)]);

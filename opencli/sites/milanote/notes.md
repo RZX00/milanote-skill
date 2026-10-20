@@ -48,3 +48,15 @@ Environment limits found while testing:
 - With the display asleep, the first input after a pause takes about 5 s.
 - A read of a just-deleted element can answer `BOARD_DELETED`; treat it as deleted.
 - Dragging a column by its centre grabs the card inside it. Grab a column by its title bar.
+
+## 2026-10-20 by claude (share links)
+
+A board you reach only through a share link (`https://app.milanote.com/<board>/<slug>?p=<permissionId>`) reads back as a SKELETON with the login cookie alone, so `get` said `not accessible`; writes went out with the wrong token. Reported from shoa's account, which reaches "A2A 团队协作" `1WSyYg10kflR5v` only through its link.
+
+How the web app does it (bundle `main-dd8591c99a60-modern.js`, read 2026-10-20): `?p=` is a permission id, not a token. The app calls `GET /api/permissions/token/<permissionId>?elementId=<board>`, which answers `{ token, permissions, protectedPermissions }`; the token is a 188-character JWT-like string. It appends the token to `state.permissions.tokens`, records its index in `permissionIdTokenIndexMap`, and sends it as `tokens=` on `GET /api/boards` and `GET /api/elements` (as the `milanote-com-permission-tokens` header on a few other calls). `/api/permissions/board/<board>` lists the board's permissions; a link-shared board has one with `type: PUBLIC` whose `_id` is the `?p=` value. Checked on the owner's account the same day: the token call answered 200 and `/api/boards?...&tokens=` answered 200.
+
+What changed: every command takes `--link`, and a share link also works where a board id goes. The command trades the permission id for the token once, adds `tokens=` to board, element and comment reads, and before a write opens the board in the editor with `?p=` so the editor holds the token. `runCollab` then sends the token the editor indexes under that permission id, falling back to the traded one, instead of `tokens[0]`. The token lives only in memory for that command.
+
+Tested on the owner's account: `get`, `board` and a create-then-delete through the link worked, and reads without a link were unchanged. Not yet tested from an account that only has the link.
+
+Unverified guess about the intermittent drops above: without a link, `runCollab` still sends `tokens[0]`, the first token the tab happened to fetch. If that token belongs to another board's permission, the server could drop the write, and which token comes first depends on what the tab opened before. Untested.

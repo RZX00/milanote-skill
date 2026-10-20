@@ -62,6 +62,8 @@ Windows 上用 PowerShell：先 `$env:OPENCLI_BROWSER_COMMAND_TIMEOUT='120'`，�
 
 `create`、`update`、`move`、`delete` 还接受 `--via auto|api|ui`，默认 `auto`，见「自动回退到编辑器」。
 
+只靠分享链接进的画板（别人把分享链接发给你，你不是画板成员）：每条命令加 `--link "<分享链接>"`，链接形如 `https://app.milanote.com/<画板id>/...?p=...`。要画板 id 的地方（`get`、`board` 的 id，`tree --id`，`--parent`）也可以直接填分享链接。改、删、挪画板里的元素时，元素 id 照填，另加 `--link`。不带链接，读回报 `<id> is not accessible`，写不进。分享链接等于这块画板的访问权限，不写进文件、提交或对话记录。
+
 便签正文支持 `**粗体**`、`*斜体*`、`~~删除线~~`、`` `代码` ``、`[文字](https://...)`。`2 * 3` 保持原文。
 
 位置：画布用 `--x` 和 `--y`（必须同时给），分栏和清单用 `--index`。都不给就按节点占地找空位，不会压到已经在画布上的元素。指定的坐标如果会重叠，命令会失败。清单里只能创建待办。
@@ -96,6 +98,7 @@ Windows 上用 PowerShell：先 `$env:OPENCLI_BROWSER_COMMAND_TIMEOUT='120'`，�
 同一条命令最多重试一次。
 
 - 扩展未连接：`opencli doctor`。扩展只在装了它的那个 Chrome 配置里连得上；Chrome 没开时，用那个配置打开 `https://app.milanote.com/`，约 10 秒后再查。仍失败就停，请用户连上 OpenCLI Chrome 扩展。不要改用 cookie。
+- 读报 `<id> is not accessible`：这块画板你只能凭分享链接进。请用户给分享链接，加 `--link` 重跑。报 `did not grant access through this share link`：链接失效了，请用户在 Chrome 里打开核对，或向画板主人要新链接。
 - 创建报 `did not persist`，或删除报 `did not delete`：默认的 `--via auto` 已经自动改用编辑器重做一次，见下一节。仍报这两种错，或元素类型不在自动回退范围内，按「写不进时：改走界面」手工操作。读命令照常可用。
 - 报 `the Milanote tab is hidden`：OpenCLI 的 Chrome 窗口被最小化了，见下一节第 2 条。
 - 编辑器写入报错时，画布上可能已留下空便签，或挪到一半的元素。应先 `board <parent>` 读回，再决定清理或手工改走界面；不应直接重跑同一条创建。

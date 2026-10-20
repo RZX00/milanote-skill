@@ -11,7 +11,7 @@
 // through the bridge; a raw CDP Page.captureScreenshot hangs on a hidden tab.
 import { CommandExecutionError } from '@jackwener/opencli/errors';
 import { childrenOf } from './codec.js';
-import { fetchElementPayload, loadElement } from './session.js';
+import { fetchElementPayload, loadElement, shareAccess } from './session.js';
 import {
   calibrate,
   contentToUnits,
@@ -29,7 +29,9 @@ const STARTED = Date.now();
 
 // MILANOTE_UI_DEBUG=1 prints each step with elapsed seconds to stderr.
 function trace(message) {
-  if (process.env.MILANOTE_UI_DEBUG) console.error(`[milanote-ui +${((Date.now() - STARTED) / 1000).toFixed(1)}s] ${message}`);
+  if (!process.env.MILANOTE_UI_DEBUG) return;
+  const shown = String(message).replace(/([?&]p=)[^\s&#"']*/g, '$1[redacted]');
+  console.error(`[milanote-ui +${((Date.now() - STARTED) / 1000).toFixed(1)}s] ${shown}`);
 }
 const NOTE_UNITS = { w: 34, h: 10 };
 const MOD_SHIFT = 8;
@@ -243,7 +245,10 @@ export async function openBoard(page, boardId) {
   let view = await readView(page).catch(() => null);
   if (!view || !String(view.href).startsWith(`${ORIGIN}/${boardId}`)) {
     trace(`goto from ${view && view.href}`);
-    await page.goto(`${ORIGIN}/${boardId}/`);
+    // A board reached through a share link only opens with its ?p= permission.
+    const access = shareAccess(page);
+    const query = access ? `?p=${encodeURIComponent(access.permissionId)}` : '';
+    await page.goto(`${ORIGIN}/${boardId}/${query}`);
     trace('goto returned');
   }
   for (let attempt = 0; attempt < 20; attempt += 1) {
