@@ -31,6 +31,8 @@ import {
   toListRow,
 } from './codec.js';
 import {
+  LINK_ARG,
+  applyShareLink,
   confirmedElement,
   ensureSession,
   fetchElementPayload,
@@ -68,6 +70,8 @@ function defineMilanoteCommand(options) {
     browser: true,
     siteSession: 'persistent',
     ...options,
+    args: [...(options.args || []), LINK_ARG],
+    func: async (page, args) => options.func(page, await applyShareLink(page, args, { open: true })),
   });
 }
 

@@ -10,12 +10,15 @@ import {
   extractText,
   generateElementId,
   interpretMe,
+  isShareLink,
   nextPosition,
   parseKind,
+  parseShareLink,
   pickHome,
   planCreate,
   planDelete,
   planMove,
+  redact,
   requireColor,
   requireElementId,
   requireLimit,
@@ -192,3 +195,28 @@ test('argument guards reject silent clamps and bad colors', () => {
 function CommandExecutionMismatch(error) {
   return error?.code === 'COMMAND_EXEC';
 }
+
+test('share links name the board and the ?p= permission', () => {
+  const link = 'https://app.milanote.com/1WSyYg10kflR5v/a2a-team?p=AbCdEf123456';
+  assert.equal(isShareLink(link), true);
+  assert.equal(isShareLink('1WSyYg10kflR5v'), false);
+  assert.equal(isShareLink(''), false);
+  assert.deepEqual(parseShareLink(link), { boardId: '1WSyYg10kflR5v', permissionId: 'AbCdEf123456' });
+  assert.deepEqual(parseShareLink('https://app.milanote.com/1WSyYg10kflR5v?p=AbCdEf123456'), {
+    boardId: '1WSyYg10kflR5v',
+    permissionId: 'AbCdEf123456',
+  });
+  assert.throws(() => parseShareLink('https://app.milanote.com/1WSyYg10kflR5v/a2a-team'), ArgumentError);
+  assert.throws(() => parseShareLink('https://evil.example/1WSyYg10kflR5v?p=AbCdEf123456'), ArgumentError);
+  assert.throws(() => parseShareLink('http://app.milanote.com/1WSyYg10kflR5v?p=AbCdEf123456'), ArgumentError);
+  assert.throws(() => parseShareLink('https://app.milanote.com/1WSyYg10kflR5v?p=a%20b'), ArgumentError);
+  assert.throws(() => parseShareLink('not a link'), ArgumentError);
+});
+
+test('redact hides share permissions and tokens', () => {
+  const shown = redact('GET /api/boards?ids=1WSyYg10kflR5v&tokens=eyJ.abc.def failed at https://app.milanote.com/1WSyYg10kflR5v/?p=AbCdEf123456');
+  assert.doesNotMatch(shown, /eyJ\.abc|AbCdEf123456/);
+  assert.match(shown, /tokens=\[redacted\]/);
+  assert.match(shown, /\?p=\[redacted\]/);
+  assert.match(redact('milanote-com-permission-tokens: eyJ.abc'), /permission-tokens=\[redacted\]/);
+});

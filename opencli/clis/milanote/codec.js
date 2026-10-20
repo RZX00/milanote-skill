@@ -92,6 +92,34 @@ export function requireElementId(value, label = 'id') {
   return id;
 }
 
+// A share link names the board in its first path segment and the permission in ?p=.
+// Whoever reaches a board only through such a link needs that permission id on
+// every read and write (see session.js useShareLink).
+const PERMISSION_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
+
+export function isShareLink(value) {
+  return /^https:\/\/app\.milanote\.com\/[^?#\s]/i.test(String(value ?? '').trim());
+}
+
+export function parseShareLink(value, label = 'link') {
+  const text = String(value ?? '').trim();
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new ArgumentError(`${label} must be a Milanote share link`);
+  }
+  const boardId = url.pathname.split('/').filter(Boolean)[0] || '';
+  const permissionId = url.searchParams.get('p') || '';
+  if (url.protocol !== 'https:' || url.host !== 'app.milanote.com' || !isElementId(boardId)) {
+    throw new ArgumentError(`${label} must be a Milanote share link, https://app.milanote.com/<board>/...?p=...`);
+  }
+  if (!PERMISSION_ID_RE.test(permissionId)) {
+    throw new ArgumentError(`${label} has no ?p= permission. Copy the board's share link again`);
+  }
+  return { boardId, permissionId };
+}
+
 export function requireLimit(value, fallback, max, label = 'limit') {
   const missing = value === undefined || value === null || value === '';
   const number = missing ? fallback : Number(value);
@@ -1134,5 +1162,7 @@ export function redact(value) {
   return String(value ?? '')
     .replace(/cookie\s*[:=][^\s,;]*/gi, 'cookie=[redacted]')
     .replace(/authorization\s*[:=]\s*[^\s,;]*/gi, 'authorization=[redacted]')
+    .replace(/permission-tokens\s*[:=]\s*[^\s,;]*/gi, 'permission-tokens=[redacted]')
+    .replace(/([?&](?:p|tokens?)=)[^\s&#"']*/gi, '$1[redacted]')
     .slice(0, 300);
 }

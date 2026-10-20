@@ -14,6 +14,8 @@ import {
   isElementId,
   isUserId,
   interpretMe,
+  isShareLink,
+  parseShareLink,
   payloadError,
   redact,
   requireElementId,
@@ -23,6 +25,12 @@ import {
 export const DOMAIN = 'app.milanote.com';
 const ORIGIN = 'https://app.milanote.com';
 const SESSION_BUDGET_MS = 20000;
+const TOKEN_RE = /^[A-Za-z0-9._-]{16,4096}$/;
+
+// Share-link access for the current command, keyed by page. Every command sets or
+// clears it first (applyShareLink), so a persistent page never carries one
+// command's link into the next.
+const ACCESS = new WeakMap();
 
 function assertAllowedUrl(url) {
   if (url.startsWith('/api/')) return;
@@ -200,6 +208,75 @@ export async function ensureSession(page) {
   return parsed;
 }
 
+// A share link does not reach the board by itself. The web app trades its ?p=
+// permission id for a token at /api/permissions/token/<id>?elementId=<board>, then
+// sends that token as ?tokens= on board and element reads and keeps it in the
+// editor's permissions.tokens for collab writes (Milanote web bundle
+// main-dd8591c99a60, read 2026-10-20). Without it a board shared only by link
+// reads back as a SKELETON ("not accessible").
+export async function useShareLink(page, link) {
+  if (!link) {
+    ACCESS.delete(page);
+    return null;
+  }
+  const { boardId, permissionId } = parseShareLink(link);
+  await ensureApp(page);
+  const response = await browserJson(page, {
+    method: 'GET',
+    url: `/api/permissions/token/${encodeURIComponent(permissionId)}?elementId=${encodeURIComponent(boardId)}`,
+  });
+  if (response.status === 401) throw authError();
+  const token = typeof response.json?.token === 'string' ? response.json.token : '';
+  if (response.status !== 200 || !TOKEN_RE.test(token)) {
+    ACCESS.delete(page);
+    throw new CommandExecutionError(
+      `Milanote did not grant access through this share link (HTTP ${response.status})`,
+      'Open the link in Chrome to check it still works, or ask the board owner for a new one.',
+    );
+  }
+  const access = { boardId, permissionId, token };
+  ACCESS.set(page, access);
+  return access;
+}
+
+export function shareAccess(page) {
+  return ACCESS.get(page) || null;
+}
+
+export function accessUrl(page, url) {
+  const access = ACCESS.get(page);
+  return access ? `${url}&tokens=${encodeURIComponent(access.token)}` : url;
+}
+
+// Writes go through the open editor, so it must hold the board's token too.
+async function openShareLink(page, access) {
+  await page.goto(`${ORIGIN}/${access.boardId}/?p=${encodeURIComponent(access.permissionId)}`);
+  await page.sleep(2);
+}
+
+export const LINK_ARG = {
+  name: 'link',
+  default: '',
+  help: 'Share link (https://app.milanote.com/<board>/...?p=...) for a board you reach only through it. A share link also works in place of a board id',
+};
+
+// Takes the share link from --link, or from a board id argument given as a link,
+// and replaces that argument with the board id. `open` also loads the board in
+// the editor, which collab writes need.
+export async function applyShareLink(page, args, { open = false } = {}) {
+  const next = { ...args };
+  let link = String(args.link ?? '').trim();
+  for (const key of ['id', 'parent']) {
+    if (!isShareLink(next[key])) continue;
+    const linked = String(next[key]).trim();
+    next[key] = parseShareLink(linked, key).boardId;
+    if (!link) link = linked;
+  }
+  const access = await useShareLink(page, link);
+  if (access && open) await openShareLink(page, access);
+  return next;
+}
+
 function throwPayloadError(payload, id) {
   const code = payloadError(payload, id);
   if (!code) return;
@@ -213,7 +290,7 @@ export async function fetchElementPayload(page, id) {
   const elementId = requireElementId(id, 'id');
   const primary = await browserJson(page, {
     method: 'GET',
-    url: `/api/boards?ids=${encodeURIComponent(elementId)}&excludeSelf=false&loadAncestors=false`,
+    url: accessUrl(page, `/api/boards?ids=${encodeURIComponent(elementId)}&excludeSelf=false&loadAncestors=false`),
   });
   if (primary.status === 401 || primary.status === 403) throw authError();
   if (primary.status === 404) throw new EmptyResultError('milanote get', `${elementId} was not found`);
@@ -225,7 +302,7 @@ export async function fetchElementPayload(page, id) {
   if (!elements.some((element) => element.id === elementId)) {
     const alt = await browserJson(page, {
       method: 'GET',
-      url: `/api/elements?ids=${encodeURIComponent(elementId)}&loadAncestors=false`,
+      url: accessUrl(page, `/api/elements?ids=${encodeURIComponent(elementId)}&loadAncestors=false`),
     });
     if (alt.status === 401 || alt.status === 403) throw authError();
     if (alt.status === 404) throw new EmptyResultError('milanote get', `${elementId} was not found`);
@@ -314,7 +391,9 @@ export async function runCollab(page, userId, events) {
   if (!Array.isArray(events) || events.length === 0 || events.length > 120) {
     throw new CommandExecutionError('Milanote collab batch is empty or too large');
   }
-  const result = await page.evaluate(async ({ userId: signedInUser, events: steps }) => {
+  const access = ACCESS.get(page);
+  const share = access ? { permissionId: access.permissionId, token: access.token } : null;
+  const result = await page.evaluate(async ({ userId: signedInUser, events: steps, share: linked }) => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const editorShows = (state, id) => {
       const elements = state?.get?.('elements');
@@ -346,7 +425,17 @@ export async function runCollab(page, userId, events) {
     const currentUser = state.get('app')?.get('currentUser');
     const liveUserId = currentUser?.get('_id') || '';
     if (liveUserId !== signedInUser) return { error: 'the open Milanote session does not match the signed-in user' };
-    const token = state.get('permissions')?.get('tokens')?.get(0) || '';
+    // The editor appends one token per permission it has fetched and indexes them
+    // by permission id. A share-link board needs its own token, not the first one.
+    const permissions = state.get('permissions');
+    const tokens = permissions?.get('tokens');
+    let token = '';
+    if (linked) {
+      const index = permissions?.getIn?.(['permissionIdTokenIndexMap', linked.permissionId]);
+      token = (index !== undefined && index !== null && tokens?.get(index)) || linked.token;
+    } else {
+      token = tokens?.get(0) || '';
+    }
     if (!token) return { error: 'Milanote has not issued a permission token for this board yet' };
     const identity = {
       user: {
@@ -395,7 +484,7 @@ export async function runCollab(page, userId, events) {
     await sleep(400);
     const hidden = createdIds.filter((id) => !editorShows(store.getState(), id));
     return { ok: hidden.length === 0, sent, hidden };
-  }, { userId, events });
+  }, { userId, events, share });
 
   if (!result?.ok) {
     const hidden = Array.isArray(result?.hidden) && result.hidden.length
@@ -464,7 +553,7 @@ export async function loadComments(page, id) {
   if (rows.length) return rows;
   const threads = await browserJson(page, {
     method: 'GET',
-    url: `/api/comments/threads?elementIds=${encodeURIComponent(id)}`,
+    url: accessUrl(page, `/api/comments/threads?elementIds=${encodeURIComponent(id)}`),
   });
   if (threads.status === 200 && threads.json) {
     rows = collectComments(threads.json, [...loaded.elements, ...collectElements(threads.json)]);
