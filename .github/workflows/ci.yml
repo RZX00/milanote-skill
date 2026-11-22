@@ -42,8 +42,14 @@ jobs:
       - name: Unit tests, in the installed adapter folder
         run: |
           cd "$HOME/.opencli/clis/milanote"
-          ls -la "$HOME/.opencli" "$HOME/.opencli/node_modules/@jackwener" || true
           node --test codec.test.js uiplan.test.js
+      - name: The skill's preflight script passes, and names the fix when OpenCLI is missing
+        run: |
+          sh "$HOME/.claude/skills/milanote/scripts/preflight.sh"
+          if out=$(PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" sh skills/milanote/scripts/preflight.sh 2>&1); then
+            echo "preflight passed without opencli on PATH"; exit 1
+          fi
+          echo "$out" | grep -q "npm install -g @jackwener/opencli"
 
   lint:
     runs-on: ubuntu-latest
