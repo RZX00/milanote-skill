@@ -2,11 +2,11 @@
 
 让 AI Agent 读写你在 Chrome 里已登录的 Milanote 画板：建便签和待办、读内容、挪位置，不用交出密码。
 
-[![CI](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml)
-
 <p align="center">
   <img src="./docs/assets/banner.jpg" alt="头图：米白色画板上，左上是标题「Milanote Skill」，左下一张写着命令行提示符的纸条，用虚线连向一张横线便签，右侧贴着照片、色块、色卡、织物样片和一幅植物素描" width="100%" />
 </p>
+
+[![CI](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml)
 
 ## 实际效果
 
