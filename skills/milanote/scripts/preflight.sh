@@ -4,7 +4,7 @@ set -eu
 PATH="$HOME/.hermes/node/bin:$HOME/.local/bin:$PATH"
 export PATH
 if ! command -v opencli >/dev/null 2>&1; then
-  echo "milanote preflight: opencli not found. Expected $HOME/.hermes/node/bin/opencli or $HOME/.local/bin/opencli" >&2
+  echo "milanote preflight: opencli is not on PATH. Install it with: npm install -g @jackwener/opencli@1.8.8" >&2
   exit 1
 fi
 if ! opencli milanote types -f json >/dev/null; then

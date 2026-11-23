@@ -6,6 +6,8 @@
   <img src="./docs/assets/banner.jpg" alt="头图：米白色画板上，左上是标题「Milanote Skill」，左下一张写着命令行提示符的纸条，用虚线连向一张横线便签，右侧贴着照片、色块、色卡、织物样片和一幅植物素描" width="100%" />
 </p>
 
+[![CI](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/RZX00/milanote-skill/actions/workflows/ci.yml)
+
 ## 实际效果
 
 ![两张截图上下对比：上图是新建的空画板「测试」，下图是同一块画板上，Agent 建好的四张便签：买颜料、约摄影师、选配色、交稿](./docs/assets/demo-before-after.png)
@@ -168,8 +170,8 @@ flowchart LR
 <details>
 <summary>已知问题（2026-10-20）</summary>
 
-- `skills/milanote/scripts/preflight.sh` 和 SKILL.md「开始」一节把 `$HOME/.hermes/node/bin` 写死进 PATH，那是作者自己的 Node 安装位置。`opencli` 已在 PATH 上时没有影响；不在时，报错里提示的路径对别人没用。
-- 仓库没有 `package.json`，在检出目录里运行 `node --test` 找不到 `@jackwener/opencli`。测试要在装好的 `~/.opencli/clis/milanote/` 里跑：`node --test codec.test.js uiplan.test.js`，实测 26 项通过。
+- `skills/milanote/scripts/preflight.sh` 和 SKILL.md「开始」一节把 `$HOME/.hermes/node/bin` 写死进 PATH，那是作者自己的 Node 安装位置。`opencli` 已在 PATH 上时没有影响；不在时，`preflight.sh` 会报 `opencli is not on PATH` 并给出安装命令。
+- 仓库没有 `package.json`，在检出目录里运行 `node --test` 找不到 `@jackwener/opencli`。测试要在装好的 `~/.opencli/clis/milanote/` 里跑：`node --test codec.test.js uiplan.test.js`，实测 26 项通过。CI 每次提交在 Ubuntu 和 Windows 上、用 OpenCLI 1.8.8 和 2.0.1 各做一遍：从检出目录安装、核对装好的文件、确认 `opencli milanote types` 能注册、跑这组测试；不连 Chrome，不碰真实画板。
 - 安装脚本总是写四个宿主的目录，并拉取 `main` 分支的最新内容，没有固定版本。
 - `.claude-plugin/marketplace.json` 的 `metadata.repository` 不是 Claude Code 认识的字段，`claude plugin validate` 报 1 条警告，加载时被忽略。
 - `docs/install.md` 的原始链接要等本文件合并到 `main` 后才可用。

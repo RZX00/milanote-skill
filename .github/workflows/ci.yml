@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, OpenCLI ${{ matrix.opencli }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # The two versions the README names as tested.
+        opencli: ["1.8.8", "2.0.1"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install OpenCLI
+        run: npm install -g --no-audit --no-fund "@jackwener/opencli@${{ matrix.opencli }}" && opencli --version
+      - name: Install the skill and the adapter from this checkout
+        run: bash install.sh
+      - name: Installed files match the checkout
+        run: |
+          diff -r opencli/clis/milanote "$HOME/.opencli/clis/milanote"
+          diff opencli/sites/milanote/notes.md "$HOME/.opencli/sites/milanote/notes.md"
+          for dir in .cursor .claude .codex .agents; do
+            diff -r skills/milanote "$HOME/$dir/skills/milanote"
+          done
+      - name: OpenCLI registers the milanote commands (does not open Chrome)
+        run: opencli milanote types -f json
+      - name: Unit tests, in the installed adapter folder
+        run: |
+          cd "$HOME/.opencli/clis/milanote"
+          node --test codec.test.js uiplan.test.js
+      - name: The skill's preflight script passes, and names the fix when OpenCLI is missing
+        run: |
+          sh "$HOME/.claude/skills/milanote/scripts/preflight.sh"
+          if out=$(PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" sh skills/milanote/scripts/preflight.sh 2>&1); then
+            echo "preflight passed without opencli on PATH"; exit 1
+          fi
+          echo "$out" | grep -q "npm install -g @jackwener/opencli"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell scripts
+        run: shellcheck install.sh skills/milanote/scripts/preflight.sh
+      - name: Adapter files parse
+        run: for file in opencli/clis/milanote/*.js; do node --check "$file"; done
+      - name: Plugin manifests parse and agree
+        run: |
+          node -e '
+            const fs = require("fs");
+            const plugin = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json", "utf8"));
+            const market = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json", "utf8"));
+            const fail = (message) => { console.error(message); process.exit(1); };
+            if (!market.plugins.some((item) => item.name === plugin.name)) fail("marketplace.json does not list the plugin");
+            if (plugin.version !== market.metadata.version) fail("plugin.json and marketplace.json versions differ");
+            if (!fs.existsSync(`${plugin.skills}/milanote/SKILL.md`)) fail("plugin.json skills path has no milanote/SKILL.md");
+            const skill = fs.readFileSync("skills/milanote/SKILL.md", "utf8");
+            if (!/^---\nname: milanote\n/.test(skill)) fail("SKILL.md front matter must start with name: milanote");
+          '
